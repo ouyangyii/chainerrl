@@ -21,7 +21,7 @@ from chainerrl.agents import dqn
 from chainerrl import replay_buffer
 
 # to begin from here
-
+from pdb import set_trace
 
 class UBE_DQN(dqn.DQN):
     """Uncertainty Bellman Equation (UBE) for DQN
@@ -51,8 +51,7 @@ class UBE_DQN(dqn.DQN):
                 q = float(action_value.max.data)
 
                 # uncertainty_subnet takes input from the hidden layer of the main Q-network
-                with chainer.no_backprop_mode():
-                    hidden_layer_value = self.model.layers[0](
+                hidden_layer_value = self.model.layers[0](
                         self.batch_states([obs], self.xp, self.phi))
                 uncertainty_sqrt = self.uncertainty_subnet(hidden_layer_value)
 
@@ -68,29 +67,33 @@ class UBE_DQN(dqn.DQN):
         if self.Sigma is None:
             self.n_features = hidden_layer_value.shape[1]
             mu = 1 # scale for the initial cov matrix
-            self.Sigma = mu*np.ones((n_actions,self.n_features,self.n_features), dtype=np.float32)
+            self.Sigma = np.zeros((n_actions,self.n_features,self.n_features), dtype=np.float32)
+            for act_id in range(n_actions):
+                self.Sigma[act_id,:,:] = mu*np.eye(self.n_features)
+
 
         # update param for the uncertainty subnet
         Sigma_current = self.Sigma[greedy_action, :, :]
         Sigma_current = Sigma_current.reshape(self.n_features, self.n_features)
         y_step1 = hidden_layer_value.data @ Sigma_current # phi^T Sigma
-        y_step2 = y_step1  @hidden_layer_value.data.T    # phi^T Sigma phi
+        y_step2 = y_step1  @ (hidden_layer_value.data.T)    # phi^T Sigma phi
         # the termination check is ignored for now
         y_uncertainty = y_step2 + (self.gamma* uncertainty_sqrt.q_values.data[0,greedy_action])**2
 
         # the loss function of the subnet
-        loss_subnet = F.square((F.square(uncertainty_sqrt.q_values[:,greedy_action]) - y_uncertainty))
+        uncertainty_sqrt_for_update = self.uncertainty_subnet(hidden_layer_value)
+        loss_subnet = F.square((F.square(uncertainty_sqrt_for_update.q_values[:,greedy_action]) - y_uncertainty))
         # take a gradient step for the subnet
         self.uncertainty_subnet.cleargrads()
         loss_subnet.backward()
         self.optimizer_subnet.update()
 
         # update the variances from observations
-        Sigma_dif = -(y_step1.T @ y_step1) / (1+y_step2)
+        Sigma_dif = (y_step1.T @ y_step1) / (1+y_step2)
         Sigma_current = Sigma_current - Sigma_dif
         self.Sigma[greedy_action, :, :] = Sigma_current
-
-
+        # if self.t % 5000 == 0:
+        #     set_trace() # debugging
         #### the rest is the same as in DQN
         # Update stats
         self.average_q *= self.average_q_decay
