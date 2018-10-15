@@ -193,11 +193,6 @@ def main():
 
     # Agent = parse_agent(args.agent)
     # testing UBE
-    #import sys
-    #sys.path.insert(0, './chainerrl/agents')
-
-    #import ube
-    #Agent = ube.UBE_DQN
     Agent = agents.UBE_DQN
 
     uncertainty_subnet = links.Sequence(
@@ -207,6 +202,8 @@ def main():
     optimizer_subnet = optimizers.RMSpropGraves(
         lr=1e-3, alpha=0.95, momentum=0.0, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
+    # Turn off explorer
+    explorer = explorers.Greedy()
 
     agent = Agent(q_func, opt, rbuf, gpu=args.gpu, gamma=0.99,
                   explorer=explorer, replay_start_size=args.replay_start_size,
