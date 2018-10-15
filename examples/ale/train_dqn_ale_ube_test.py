@@ -198,6 +198,7 @@ def main():
 
     import ube
     Agent = ube.UBE_DQN
+    # Agent = agents.UBE_DQN
 
     uncertainty_subnet = links.Sequence(
         L.Linear(512, 512),

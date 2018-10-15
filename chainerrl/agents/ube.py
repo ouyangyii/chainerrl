@@ -59,17 +59,17 @@ class UBE_DQN(dqn.DQN):
                 # action_value_adjusted (array): the adjusted value
                 assert action_value.n_actions == uncertainty_sqrt.n_actions
                 n_actions = action_value.n_actions
-                noise = np.random.normal(size=n_actions).astype(np.float32)
-                action_value_adjusted = action_value.q_values.data + self.beta * np.multiply(noise,uncertainty_sqrt.q_values.data)
+                noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
+                action_value_adjusted = action_value.q_values.data + self.beta * self.xp.multiply(noise,uncertainty_sqrt.q_values.data)
                 greedy_action = action_value_adjusted.argmax(axis = 1)
 
         # initialization of the variances
         if self.Sigma is None:
             self.n_features = hidden_layer_value.shape[1]
             mu = 1 # scale for the initial cov matrix
-            self.Sigma = np.zeros((n_actions,self.n_features,self.n_features), dtype=np.float32)
+            self.Sigma = self.xp.zeros((n_actions,self.n_features,self.n_features), dtype=self.xp.float32)
             for act_id in range(n_actions):
-                self.Sigma[act_id,:,:] = mu*np.eye(self.n_features)
+                self.Sigma[act_id,:,:] = mu*self.xp.eye(self.n_features)
 
 
         # update param for the uncertainty subnet
