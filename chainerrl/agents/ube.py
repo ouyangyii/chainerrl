@@ -60,7 +60,7 @@ class UBE_DQN(dqn.DQN):
                 assert action_value.n_actions == uncertainty_sqrt.n_actions
                 n_actions = action_value.n_actions
                 noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-                action_value_adjusted = action_value.q_values.data + self.beta * self.xp.multiply(noise,uncertainty_sqrt.q_values.data)
+                action_value_adjusted = cuda.to_cpu(action_value.q_values.data) + self.beta * self.xp.multiply(noise,uncertainty_sqrt.q_values.data)
                 greedy_action = action_value_adjusted.argmax(axis = 1)
 
         # initialization of the variances
@@ -81,7 +81,7 @@ class UBE_DQN(dqn.DQN):
         y_uncertainty = y_step2 + (self.gamma* uncertainty_sqrt.q_values.data[0,greedy_action])**2
 
         # the loss function of the subnet
-        uncertainty_sqrt_for_update = self.uncertainty_subnet(hidden_layer_value)
+        uncertainty_sqrt_for_update = self.uncertainty_subnet(hidden_layer_value.data)
         loss_subnet = F.square((F.square(uncertainty_sqrt_for_update.q_values[:,greedy_action]) - y_uncertainty))
         # take a gradient step for the subnet
         self.uncertainty_subnet.cleargrads()
