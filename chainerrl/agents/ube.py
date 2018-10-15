@@ -43,8 +43,7 @@ class UBE_DQN(dqn.DQN):
         super().__init__(*args, **kwargs)
         if self.gpu is not None and self.gpu >= 0:
             cuda.get_device(self.gpu).use()
-            self.uncertainty_subnet.to_gpu(device=self.gpu)
-
+            self.model.to_gpu(device=self.gpu)
 
     # working on now
     def act_and_train(self, obs, reward):
@@ -57,7 +56,7 @@ class UBE_DQN(dqn.DQN):
                 # uncertainty_subnet takes input from the hidden layer of the main Q-network
                 hidden_layer_value = self.model.layers[0](
                         self.batch_states([obs], self.xp, self.phi))
-                uncertainty_sqrt = self.uncertainty_subnet(hidden_layer_value.data)
+                uncertainty_sqrt = self.uncertainty_subnet(hidden_layer_value)
 
                 # add noise to Q-value to perform Thompson sampling
                 # action_value_adjusted (array): the adjusted value

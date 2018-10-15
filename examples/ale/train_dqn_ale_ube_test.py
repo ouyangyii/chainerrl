@@ -161,6 +161,8 @@ def main():
         links.to_factorized_noisy(q_func)
         # Turn off explorer
         explorer = explorers.Greedy()
+    # Turn off explorer for UBE
+    explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
     chainerrl.misc.draw_computational_graph(
@@ -202,8 +204,6 @@ def main():
     optimizer_subnet = optimizers.RMSpropGraves(
         lr=1e-3, alpha=0.95, momentum=0.0, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
-    # Turn off explorer
-    explorer = explorers.Greedy()
 
     agent = Agent(q_func, opt, rbuf, gpu=args.gpu, gamma=0.99,
                   explorer=explorer, replay_start_size=args.replay_start_size,
