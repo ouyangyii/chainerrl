@@ -8,6 +8,7 @@ standard_library.install_aliases()  # NOQA
 import chainer
 import chainer.links as L
 import chainer.functions as F
+from chainer import cuda
 
 import chainerrl
 from chainerrl.action_value import DiscreteActionValue
@@ -52,7 +53,7 @@ class UBE_DQN(dqn.DQN):
                 # uncertainty_subnet takes input from the hidden layer of the main Q-network
                 hidden_layer_value = self.model.layers[0](
                         self.batch_states([obs], self.xp, self.phi))
-                uncertainty_sqrt = self.uncertainty_subnet(hidden_layer_value)
+                uncertainty_sqrt = self.uncertainty_subnet(cuda.to_cpu(hidden_layer_value))
 
                 # add noise to Q-value to perform Thompson sampling
                 # action_value_adjusted (array): the adjusted value
