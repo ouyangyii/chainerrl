@@ -43,7 +43,7 @@ class UBE_DQN(dqn.DQN):
         super().__init__(*args, **kwargs)
         if self.gpu is not None and self.gpu >= 0:
             cuda.get_device(self.gpu).use()
-            self.model.to_gpu(device=self.gpu)
+            self.uncertainty_subnet.to_gpu(device=self.gpu)
 
     # working on now
     def act_and_train(self, obs, reward):
