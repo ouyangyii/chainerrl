@@ -8,7 +8,6 @@ standard_library.install_aliases()  # NOQA
 import chainer
 import chainer.links as L
 import chainer.functions as F
-import numpy as np
 
 import chainerrl
 from chainerrl.action_value import DiscreteActionValue
