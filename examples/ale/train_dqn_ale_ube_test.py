@@ -194,7 +194,7 @@ def main():
     # Agent = parse_agent(args.agent)
     # testing UBE
     import sys
-    sys.path.insert(0, '../../chainerrl/agents')
+    sys.path.insert(0, './chainerrl/agents')
 
     import ube
     Agent = ube.UBE_DQN
