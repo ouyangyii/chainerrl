@@ -64,7 +64,7 @@ class UBE_DQN(dqn.DQN):
                 n_actions = action_value.n_actions
                 noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
                 action_value_adjusted = action_value.q_values.data + self.beta * self.xp.multiply(noise,uncertainty_sqrt.q_values.data)
-                greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1))[0]
+                greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
 
         # initialization of the variances
         if self.Sigma is None:
@@ -81,8 +81,7 @@ class UBE_DQN(dqn.DQN):
         y_step1 = hidden_layer_value.data @ Sigma_current # phi^T Sigma
         y_step2 = y_step1  @ (hidden_layer_value.data.T)    # phi^T Sigma phi
         # the termination check is ignored for now
-        y_uncertainty = y_step2 + (self.gamma* uncertainty_sqrt.q_values.data[0,greedy_action])**2
-
+        y_uncertainty = y_step2[0][0] + (self.gamma* uncertainty_sqrt.q_values.data[0,greedy_action])**2
         # the loss function of the subnet
         uncertainty_sqrt_for_update = self.uncertainty_subnet(hidden_layer_value)
         loss_subnet = F.square((F.square(uncertainty_sqrt_for_update.q_values[:,greedy_action]) - y_uncertainty))
