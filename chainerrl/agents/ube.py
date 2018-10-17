@@ -64,7 +64,7 @@ class UBE_DQN(dqn.DQN):
                 n_actions = action_value.n_actions
                 noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
                 action_value_adjusted = action_value.q_values.data + self.beta * self.xp.multiply(noise,uncertainty_sqrt.q_values.data)
-                greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1))
+                greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1))[0]
 
         # initialization of the variances
         if self.Sigma is None:
