@@ -99,6 +99,13 @@ class UBE_DQN(dqn.DQN):
         # the loss function of the subnet
         log_uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
         loss_subnet = F.square(y_uncertainty - F.exp(log_uncertainty_for_update))
+
+        # DEBUG:
+        # if self.t % 100 == 0:
+        #     print(loss_subnet.data)
+        #     print(uncertainty_next)
+        #     print()
+
         # take a gradient step for the subnet
         self.uncertainty_subnet.cleargrads()
         loss_subnet.backward()
@@ -127,7 +134,7 @@ class UBE_DQN(dqn.DQN):
         # the uncertainty estimates
         uncertainty_estimates = self.xp.exp(log_uncertainty.q_values.data)
         noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-        bonus = self.beta * self.xp.multiply(noise,uncertainty_estimates)
+        bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates))
         action_value_adjusted = action_value.q_values.data + bonus
         greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
         # keep this if there is additional exploration
@@ -144,7 +151,7 @@ class UBE_DQN(dqn.DQN):
         # initialization of the cov Sigma for all actions
         if self.Sigma is None:
             n_features = features_vec.shape[0]
-            mu = 1 # scale for the initial cov matrix
+            mu = 10 # scale for the initial cov matrix
             self.Sigma = self.xp.zeros((n_actions,n_features,n_features), dtype=self.xp.float32)
             for act_id in range(n_actions):
                 self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
