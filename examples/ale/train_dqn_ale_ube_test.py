@@ -195,16 +195,20 @@ def main():
 
     # Agent = parse_agent(args.agent)
     # testing UBE
-    Agent = agents.UBE_DQN
-
-    uncertainty_subnet = links.Sequence(
+    # change the structure of q_func
+    q_func = chainerrl.agents.ube.SequenceCachedValues(*q_func.layers)
+    # define the uncertainty subnetwork with one hidden layer
+    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedValues(
         L.Linear(512, 512),
         L.Linear(512, n_actions),
         DiscreteActionValue)
+    # the optimizer for the subnetwork
     optimizer_subnet = optimizers.RMSpropGraves(
         lr=1e-3, alpha=0.95, momentum=0.0, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
 
+
+    Agent = agents.UBE_DQN
     agent = Agent(q_func, opt, rbuf, gpu=args.gpu, gamma=0.99,
                   explorer=explorer, replay_start_size=args.replay_start_size,
                   target_update_interval=args.target_update_interval,

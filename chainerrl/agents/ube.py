@@ -23,29 +23,92 @@ from chainerrl import replay_buffer
 # to begin from here
 from pdb import set_trace
 
+
+class SequenceCachedValues(links.Sequence):
+    """Sequential callable Link that consists of other Links where the value of each link is cached after a call
+
+    """
+    def __init__(self, *layers):
+        super().__init__(*layers)
+        self.layer_values = [None] * len(self.layers)
+
+    def __call__(self, x, **kwargs):
+        h = x
+        for (index,layer), argnames, accept_var_args in zip(enumerate(self.layers),
+                                                    self.argnames,
+                                                    self.accept_var_args):
+            if accept_var_args:
+                layer_kwargs = kwargs
+            else:
+                layer_kwargs = {k: v for k, v in kwargs.items()
+                                if k in argnames}
+            h = layer(h, **layer_kwargs)
+            self.layer_values[index] = h
+        return h
+
+
+
+
 class UBE_DQN(dqn.DQN):
     """Uncertainty Bellman Equation (UBE) for DQN
     See: https://arxiv.org/abs/1709.05380
 
     Args:
-        uncertainty_subnet (StateQFunction): the uncertainty sub-network, output is (u)^0.5.
+        q_function (SequenceCachedValues, StateQFunction): the q-function with access to hidden layers
+        uncertainty_subnet (SequenceCachedValues, StateQFunction): the uncertainty sub-network, output is (u)^0.5.
         optimizer_subnet (Optimizer): Optimizer for the subnetwork that is already setup
         beta (float): Thompson sampling parameter
-    For other arguments, see DQN.
+
+        For other arguments, see DQN.
     """
 
     def __init__(self, *args, **kwargs):
         self.uncertainty_subnet = kwargs.pop('uncertainty_subnet')
         self.optimizer_subnet = kwargs.pop('optimizer_subnet')
         self.beta = kwargs.pop('beta',0.01)
-        self.Sigma = None
-        self.n_features = None
         super().__init__(*args, **kwargs)
+        self.Sigma = None
+        self.last_features_vec = None
+        self.last_hidden_layer_value = None
         if self.gpu is not None and self.gpu >= 0:
             cuda.get_device(self.gpu).use()
             self.uncertainty_subnet.to_gpu(device=self.gpu)
 
-    # working on now
+    def update_uncertainty_subnet(self, features_vec,hidden_layer_value, a, s_next=None, a_next=None, uncertainty_next=None):
+        """
+        update params for the uncertainty subnet, and also the cov Sigma
+
+        Args:
+            (s,a): current state and action
+            (s_next,a_next): next state and action
+            features_vec: phi(s), the last layer of the subnetwork
+            hidden_layer_value: the input to the uncertainty subnetwork
+            uncertainty_next: the computed uncertainty value for (s_next,a_next)
+        """
+        n_features = features_vec.shape[0]
+        Sigma_a = self.Sigma[a, :, :]
+        Sigma_a = Sigma_a.reshape(n_features, n_features)
+        # compute the uncertainty value y, which is the target for the uncertainty subnetwork
+        y_step1 = Sigma_a @ features_vec  # Sigma phi
+        y_step2 = float(features_vec.T @ y_step1) # phi^T Sigma phi, a scalar
+        y_uncertainty = y_step2
+        if s_next is not None:
+            assert a_next is not None
+            y_uncertainty += self.gamma ** 2 * uncertainty_next
+
+        # the loss function of the subnet
+        log_uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
+        loss_subnet = F.square(y_uncertainty - F.exp(log_uncertainty_for_update))
+        # take a gradient step for the subnet
+        self.uncertainty_subnet.cleargrads()
+        loss_subnet.backward()
+        self.optimizer_subnet.update()
+
+        # update the variances from observations
+        Sigma_dif = (y_step1 @ y_step1.T) / (1 + y_step2)
+        Sigma_a = Sigma_a - Sigma_dif
+        self.Sigma[a, :, :] = Sigma_a
+
     def act_and_train(self, obs, reward):
         with chainer.using_config('train', False):
             with chainer.no_backprop_mode():
@@ -53,58 +116,46 @@ class UBE_DQN(dqn.DQN):
                     self.batch_states([obs], self.xp, self.phi))
                 q = float(action_value.max.data)
 
-                # uncertainty_subnet takes input from the hidden layer of the main Q-network
-                hidden_layer_value = self.model.layers[0](
-                        self.batch_states([obs], self.xp, self.phi))
-                uncertainty_sqrt = self.uncertainty_subnet(hidden_layer_value)
+                # uncertainty_subnet takes input from the first hidden layer of the main Q-network
+                hidden_layer_value = self.model.layer_values[0]
+                log_uncertainty = self.uncertainty_subnet(hidden_layer_value)
 
-                # add noise to Q-value to perform Thompson sampling
-                # action_value_adjusted (array): the adjusted value
-                assert action_value.n_actions == uncertainty_sqrt.n_actions
-                n_actions = action_value.n_actions
-                noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-                action_value_adjusted = action_value.q_values.data + self.beta * self.xp.multiply(noise,uncertainty_sqrt.q_values.data)
-                greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
+        # add noise to Q-value to perform Thompson sampling for exploration
+        # action_value_adjusted (array): the adjusted value
+        assert action_value.n_actions == log_uncertainty.n_actions
+        n_actions = action_value.n_actions
+        # the uncertainty estimates
+        uncertainty_estimates = self.xp.exp(log_uncertainty.q_values.data)
+        noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
+        bonus = self.beta * self.xp.multiply(noise,uncertainty_estimates)
+        action_value_adjusted = action_value.q_values.data + bonus
+        greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
+        # keep this if there is additional exploration
+        action = self.explorer.select_action(
+            self.t, lambda: greedy_action, action_value=action_value)
 
-        # initialization of the variances
+
+
+        # the value of the last hidden layer is the feature vector used in UBE
+        # it's layer[-3] since there is an output layer and an actionvalue layer
+        features_vec = self.uncertainty_subnet.layer_values[-3].data
+        features_vec = features_vec.reshape([-1, 1])
+
+        # initialization of the cov Sigma for all actions
         if self.Sigma is None:
-            self.n_features = hidden_layer_value.shape[1]
+            n_features = features_vec.shape[0]
             mu = 1 # scale for the initial cov matrix
-            self.Sigma = self.xp.zeros((n_actions,self.n_features,self.n_features), dtype=self.xp.float32)
+            self.Sigma = self.xp.zeros((n_actions,n_features,n_features), dtype=self.xp.float32)
             for act_id in range(n_actions):
-                self.Sigma[act_id,:,:] = mu*self.xp.eye(self.n_features)
+                self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
 
 
-        # update param for the uncertainty subnet
-        Sigma_current = self.Sigma[greedy_action, :, :]
-        Sigma_current = Sigma_current.reshape(self.n_features, self.n_features)
-        y_step1 = hidden_layer_value.data @ Sigma_current # phi^T Sigma
-        y_step2 = y_step1  @ (hidden_layer_value.data.T)    # phi^T Sigma phi
-        # the termination check is ignored for now
-        y_uncertainty = y_step2[0][0] + (self.gamma* uncertainty_sqrt.q_values.data[0,greedy_action])**2
-        # the loss function of the subnet
-        uncertainty_sqrt_for_update = self.uncertainty_subnet(hidden_layer_value)
-        loss_subnet = F.square((F.square(uncertainty_sqrt_for_update.q_values[:,greedy_action]) - y_uncertainty))
-        # take a gradient step for the subnet
-        self.uncertainty_subnet.cleargrads()
-        loss_subnet.backward()
-        self.optimizer_subnet.update()
-
-        # update the variances from observations
-        Sigma_dif = (y_step1.T @ y_step1) / (1+y_step2)
-        Sigma_current = Sigma_current - Sigma_dif
-        self.Sigma[greedy_action, :, :] = Sigma_current
-        # if self.t % 5000 == 0:
-        #     set_trace() # debugging
-        #### the rest is the same as in DQN
         # Update stats
         self.average_q *= self.average_q_decay
         self.average_q += (1 - self.average_q_decay) * q
 
         self.logger.debug('t:%s q:%s action_value:%s', self.t, q, action_value)
 
-        action = self.explorer.select_action(
-            self.t, lambda: greedy_action, action_value=action_value)
         self.t += 1
 
         # Update the target network
@@ -121,12 +172,33 @@ class UBE_DQN(dqn.DQN):
                 next_state=obs,
                 next_action=action,
                 is_state_terminal=False)
+            # update the uncertainty subnetwork
+            self.update_uncertainty_subnet(
+                self.last_features_vec,
+                self.last_hidden_layer_value,
+                self.last_action,
+                s_next=obs,
+                a_next=action,
+                uncertainty_next=float(uncertainty_estimates[:,action]))
+
 
         self.last_state = obs
         self.last_action = action
+        self.last_features_vec = features_vec
+        self.last_hidden_layer_value = hidden_layer_value
 
         self.replay_updater.update_if_necessary(self.t)
 
         self.logger.debug('t:%s r:%s a:%s', self.t, reward, action)
 
         return self.last_action
+
+    def stop_episode_and_train(self, state, reward, done=False):
+        """ Need to train the uncertainty subnetwork when an episode ends
+        """
+        # update the uncertainty subnetwork with no next state
+        self.update_uncertainty_subnet(
+            self.last_features_vec,
+            self.last_hidden_layer_value,
+            self.last_action)
+        super().stop_episode_and_train(state, reward, done=False)
