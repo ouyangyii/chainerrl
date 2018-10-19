@@ -29,8 +29,10 @@ from gym import spaces
 import gym.wrappers
 import numpy as np
 
+import chainer
 from chainer import links as L
 from chainerrl.action_value import DiscreteActionValue
+
 
 import chainerrl
 from chainerrl.agents.dqn import DQN
@@ -153,8 +155,7 @@ def main():
         # Turn off explorer
         explorer = explorers.Greedy()
     # Turn off explorer for UBE
-    # DEBUG:
-    # explorer = explorers.Greedy()
+    explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
     # chainerrl.misc.draw_computational_graph(
