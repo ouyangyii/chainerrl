@@ -31,6 +31,7 @@ import numpy as np
 
 import chainer
 from chainer import links as L
+from chainer import functions as F
 from chainerrl.action_value import DiscreteActionValue
 
 
@@ -144,11 +145,13 @@ def main():
     # testing UBE, only for discrete action now
     n_actions = action_space.n
     # q_func share the first hidden layer with the subnet
-    q_func = chainerrl.agents.ube.SequenceCachedValues(L.Linear(obs_size, args.n_hidden_channels),
-                                                       q_functions.FCStateQFunctionWithDiscreteAction(
-                                                           args.n_hidden_channels, n_actions,
-                                                           n_hidden_channels=args.n_hidden_channels,
-                                                           n_hidden_layers=args.n_hidden_layers-1))
+    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
+            L.Linear(obs_size, args.n_hidden_channels),
+            F.relu,
+            q_functions.FCStateQFunctionWithDiscreteAction(
+            args.n_hidden_channels, n_actions,
+            n_hidden_channels=args.n_hidden_channels,
+            n_hidden_layers=args.n_hidden_layers-1))
 
     if args.noisy_net_sigma is not None:
         links.to_factorized_noisy(q_func)
@@ -158,9 +161,9 @@ def main():
     explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
-    # chainerrl.misc.draw_computational_graph(
-    #     [q_func(np.zeros_like(obs_space.low, dtype=np.float32)[None])],
-    #     os.path.join(args.outdir, 'model'))
+    chainerrl.misc.draw_computational_graph(
+        [q_func(np.zeros_like(obs_space.low, dtype=np.float32)[None])],
+        os.path.join(args.outdir, 'model'))
 
     opt = optimizers.Adam()
     opt.setup(q_func)
@@ -188,8 +191,10 @@ def main():
             rbuf = replay_buffer.ReplayBuffer(rbuf_capacity)
 
     # define the uncertainty subnetwork with one hidden layer
-    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedValues(
+    # it's last layer is layer[0] since there is an output layer and an actionvalue layer
+    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
         L.Linear(args.n_hidden_channels, args.n_hidden_channels),
+        F.relu,
         L.Linear(args.n_hidden_channels, n_actions),
         DiscreteActionValue)
     # the optimizer for the subnetwork

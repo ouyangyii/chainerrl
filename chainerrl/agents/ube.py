@@ -24,13 +24,15 @@ from chainerrl import replay_buffer
 from pdb import set_trace
 
 
-class SequenceCachedValues(links.Sequence):
+class SequenceCachedHiddenValue(links.Sequence):
     """Sequential callable Link that consists of other Links where the value of each link is cached after a call
 
     """
-    def __init__(self, *layers):
+    def __init__(self, layer_index, *layers):
         super().__init__(*layers)
-        self.layer_values = [None] * len(self.layers)
+        # self.layer_cached_values = [None] * len(self.layers)
+        self.layer_index = layer_index
+        self.layer_cached_value = None
 
     def __call__(self, x, **kwargs):
         h = x
@@ -43,7 +45,8 @@ class SequenceCachedValues(links.Sequence):
                 layer_kwargs = {k: v for k, v in kwargs.items()
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
-            self.layer_values[index] = h
+            if index == self.layer_index:
+                self.layer_cached_value = h
         return h
 
 
@@ -66,12 +69,12 @@ class UBE_DQN(dqn.DQN):
         self.uncertainty_subnet = kwargs.pop('uncertainty_subnet')
         self.optimizer_subnet = kwargs.pop('optimizer_subnet')
         self.beta = kwargs.pop('beta',0.01)
-        self.n_step = kwargs.pop('n_step', 150)
+        #self.n_step = kwargs.pop('n_step', 150)
         super().__init__(*args, **kwargs)
-        self.bonus = 0
         self.Sigma = None
         self.last_features_vec = None
         self.last_hidden_layer_value = None
+        self.bonus = 0
         if self.gpu is not None and self.gpu >= 0:
             cuda.get_device(self.gpu).use()
             self.uncertainty_subnet.to_gpu(device=self.gpu)
@@ -113,35 +116,33 @@ class UBE_DQN(dqn.DQN):
         self.Sigma[a, :, :] = Sigma_a
 
     def act_and_train(self, obs, reward):
-        with chainer.using_config('train', False):
-            with chainer.no_backprop_mode():
-                action_value = self.model(
-                    self.batch_states([obs], self.xp, self.phi))
-                q = float(action_value.max.data)
+        with chainer.using_config('train', False), chainer.no_backprop_mode():
+            action_value = self.model(
+                self.batch_states([obs], self.xp, self.phi))
+            q = float(action_value.max.data)
 
-                # uncertainty_subnet takes input from the first hidden layer of the main Q-network
-                hidden_layer_value = self.model.layer_values[0]
-                log_uncertainty = self.uncertainty_subnet(hidden_layer_value)
+            # uncertainty_subnet takes input from the first hidden layer of the main Q-network
+            hidden_layer_value = self.model.layer_cached_value
+            log_uncertainty = self.uncertainty_subnet(hidden_layer_value)
 
-        # add noise to Q-value to perform Thompson sampling for exploration
-        # action_value_adjusted (array): the adjusted value
-        assert action_value.n_actions == log_uncertainty.n_actions
-        n_actions = action_value.n_actions
-        # the uncertainty estimates
-        uncertainty_estimates = self.xp.exp(log_uncertainty.q_values.data)
-        noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-        self.bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates))
-        action_value_adjusted = action_value.q_values.data + self.bonus
-        greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
-        # keep this if there is additional exploration
-        action = self.explorer.select_action(
-            self.t, lambda: greedy_action, action_value=action_value)
+            # add noise to Q-value to perform Thompson sampling for exploration
+            # action_value_adjusted (array): the adjusted value
+            assert action_value.n_actions == log_uncertainty.n_actions
+            n_actions = action_value.n_actions
+            # the uncertainty estimates
+            uncertainty_estimates = self.xp.exp(log_uncertainty.q_values.data)
+            noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
+            # if self.last_state is None:
+            self.bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates))
+            action_value_adjusted = action_value.q_values.data + self.bonus
+            self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
+            greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
+
 
 
 
         # the value of the last hidden layer is the feature vector used in UBE
-        # it's layer[-3] since there is an output layer and an actionvalue layer
-        features_vec = self.uncertainty_subnet.layer_values[-3].data
+        features_vec = self.uncertainty_subnet.layer_cached_value.data
         features_vec = features_vec.reshape([-1, 1])
 
         # initialization of the cov Sigma for all actions
@@ -158,6 +159,10 @@ class UBE_DQN(dqn.DQN):
         self.average_q += (1 - self.average_q_decay) * q
 
         self.logger.debug('t:%s q:%s action_value:%s', self.t, q, action_value)
+
+        # keep this if there is additional exploration
+        action = self.explorer.select_action(
+            self.t, lambda: greedy_action, action_value=action_value)
 
         self.t += 1
 
@@ -204,4 +209,19 @@ class UBE_DQN(dqn.DQN):
             self.last_features_vec,
             self.last_hidden_layer_value,
             self.last_action)
-        super().stop_episode_and_train(state, reward, done=False)
+
+        # super().stop_episode_and_train(state, reward, done=False)
+        # issue with the super function, just copy the rest from DQN
+        assert self.last_state is not None
+        assert self.last_action is not None
+
+        # Add a transition to the replay buffer
+        self.replay_buffer.append(
+            state=self.last_state,
+            action=self.last_action,
+            reward=reward,
+            next_state=state,
+            next_action=self.last_action,
+            is_state_terminal=done)
+
+        self.stop_episode()
