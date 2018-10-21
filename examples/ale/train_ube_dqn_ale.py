@@ -195,8 +195,8 @@ def main():
 
     # Agent = parse_agent(args.agent)
     # testing UBE
-    # change the structure of q_func
-    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(1, *q_func.layers)
+    # change the structure of q_func, the first layer's output will be feed to the subnet
+    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(0, *q_func.layers)
     # define the uncertainty subnetwork with one hidden layer
     uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
         L.Linear(512, 512),
