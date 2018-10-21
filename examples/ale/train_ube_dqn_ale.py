@@ -184,10 +184,10 @@ def main():
     else:
         rbuf = replay_buffer.ReplayBuffer(10 ** 6)
 
-    explorer = explorers.LinearDecayEpsilonGreedy(
-        1.0, args.final_epsilon,
-        args.final_exploration_frames,
-        lambda: np.random.randint(n_actions))
+    # explorer = explorers.LinearDecayEpsilonGreedy(
+    #     1.0, args.final_epsilon,
+    #     args.final_exploration_frames,
+    #     lambda: np.random.randint(n_actions))
 
     def phi(x):
         # Feature extractor
@@ -196,10 +196,11 @@ def main():
     # Agent = parse_agent(args.agent)
     # testing UBE
     # change the structure of q_func
-    q_func = chainerrl.agents.ube.SequenceCachedValues(*q_func.layers)
+    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(1, *q_func.layers)
     # define the uncertainty subnetwork with one hidden layer
-    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedValues(
+    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
         L.Linear(512, 512),
+        F.relu,
         L.Linear(512, n_actions),
         DiscreteActionValue)
     # the optimizer for the subnetwork
