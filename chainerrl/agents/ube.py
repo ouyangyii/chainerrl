@@ -104,10 +104,6 @@ class UBE_DQN(dqn.DQN):
         # the loss function of the subnet
         log_uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
         loss_subnet = F.square(y_uncertainty - F.exp(log_uncertainty_for_update))
-
-        #debug:
-        print([y_uncertainty,loss_subnet.data])
-
         # take a gradient step for the subnet
         self.uncertainty_subnet.cleargrads()
         loss_subnet.backward()
