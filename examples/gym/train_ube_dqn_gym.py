@@ -198,11 +198,11 @@ def main():
         L.Linear(args.n_hidden_channels, n_actions),
         DiscreteActionValue)
     # the optimizer for the subnetwork
-    optimizer_subnet = optimizers.RMSprop(lr=1e-3)
+    optimizer_subnet = optimizers.RMSprop(lr=1e-5)
     optimizer_subnet.setup(uncertainty_subnet)
 
     # debug:
-    chainer.set_debug(True)
+    # chainer.set_debug(True)
 
     agent = chainerrl.agents.ube.UBE_DQN(q_func, opt, rbuf, gpu=args.gpu, gamma=args.gamma,
                 explorer=explorer, replay_start_size=args.replay_start_size,

@@ -75,6 +75,8 @@ class UBE_DQN(dqn.DQN):
         self.last_features_vec = None
         self.last_hidden_layer_value = None
         self.bonus = 0
+        self.average_loss_subnet = 0
+        self.average_q_subnet = 0
         if self.gpu is not None and self.gpu >= 0:
             cuda.get_device(self.gpu).use()
             self.uncertainty_subnet.to_gpu(device=self.gpu)
@@ -104,6 +106,14 @@ class UBE_DQN(dqn.DQN):
         # the loss function of the subnet
         log_uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
         loss_subnet = F.square(y_uncertainty - F.exp(log_uncertainty_for_update))
+
+        # Update stats
+        self.average_loss_subnet *= self.average_loss_decay
+        self.average_loss_subnet += (1 - self.average_loss_decay) * float(loss_subnet.data)
+            #debug:
+        # print([y_uncertainty,loss_subnet.data])
+        # if loss_subnet.data > 1000:
+            # set_trace()
         # take a gradient step for the subnet
         self.uncertainty_subnet.cleargrads()
         loss_subnet.backward()
@@ -137,6 +147,9 @@ class UBE_DQN(dqn.DQN):
             self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
             greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
 
+        # keep this if there is additional exploration
+        action = self.explorer.select_action(
+            self.t, lambda: greedy_action, action_value=action_value)
 
 
 
@@ -157,11 +170,11 @@ class UBE_DQN(dqn.DQN):
         self.average_q *= self.average_q_decay
         self.average_q += (1 - self.average_q_decay) * q
 
+        self.average_q_subnet *= self.average_q_decay
+        self.average_q_subnet += (1 - self.average_q_decay) * float(uncertainty_estimates[:,action])
+
         self.logger.debug('t:%s q:%s action_value:%s', self.t, q, action_value)
 
-        # keep this if there is additional exploration
-        action = self.explorer.select_action(
-            self.t, lambda: greedy_action, action_value=action_value)
 
         self.t += 1
 
@@ -209,18 +222,13 @@ class UBE_DQN(dqn.DQN):
             self.last_hidden_layer_value,
             self.last_action)
 
-        # super().stop_episode_and_train(state, reward, done=False)
-        # issue with the super function, just copy the rest from DQN
-        assert self.last_state is not None
-        assert self.last_action is not None
+        super().stop_episode_and_train(state, reward, done)
 
-        # Add a transition to the replay buffer
-        self.replay_buffer.append(
-            state=self.last_state,
-            action=self.last_action,
-            reward=reward,
-            next_state=state,
-            next_action=self.last_action,
-            is_state_terminal=done)
-
-        self.stop_episode()
+    # print also stats
+    def get_statistics(self):
+        return [
+            ('average_q', self.average_q),
+            ('average_loss', self.average_loss),
+            ('average_q_subnet', self.average_q_subnet),
+            ('average_loss_subnet', self.average_loss_subnet)
+        ]
