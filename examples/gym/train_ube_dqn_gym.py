@@ -158,6 +158,7 @@ def main():
         # Turn off explorer
         explorer = explorers.Greedy()
     # Turn off explorer for UBE
+    # debug:
     explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
@@ -192,13 +193,16 @@ def main():
 
     # define the uncertainty subnetwork with one hidden layer
     # it's last layer is layer[0] since there is an output layer and an actionvalue layer
+    # the bias is initialized with a large positive value
     uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
         L.Linear(args.n_hidden_channels, args.n_hidden_channels),
         F.relu,
-        L.Linear(args.n_hidden_channels, n_actions),
+        L.Linear(args.n_hidden_channels, n_actions,initial_bias = 1.0*args.n_hidden_channels ),
         DiscreteActionValue)
+
+
     # the optimizer for the subnetwork
-    optimizer_subnet = optimizers.RMSprop(lr=1e-5)
+    optimizer_subnet = optimizers.RMSprop(lr=1e-3)
     optimizer_subnet.setup(uncertainty_subnet)
 
     # debug:

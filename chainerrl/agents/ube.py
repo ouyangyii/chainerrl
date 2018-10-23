@@ -104,8 +104,8 @@ class UBE_DQN(dqn.DQN):
             y_uncertainty += (self.gamma ** 2) * uncertainty_next
 
         # the loss function of the subnet
-        log_uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
-        loss_subnet = F.square(y_uncertainty - F.exp(log_uncertainty_for_update))
+        uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
+        loss_subnet = F.square(y_uncertainty - uncertainty_for_update)
 
         # Update stats
         self.average_loss_subnet *= self.average_loss_decay
@@ -129,16 +129,17 @@ class UBE_DQN(dqn.DQN):
 
             # uncertainty_subnet takes input from the first hidden layer of the main Q-network
             hidden_layer_value = self.model.layer_cached_value
-            log_uncertainty = self.uncertainty_subnet(hidden_layer_value)
+            uncertainty_estimates = self.uncertainty_subnet(hidden_layer_value)
 
             # add noise to Q-value to perform Thompson sampling for exploration
             # action_value_adjusted (array): the adjusted value
-            assert action_value.n_actions == log_uncertainty.n_actions
+            assert action_value.n_actions == uncertainty_estimates.n_actions
             n_actions = action_value.n_actions
-            # the uncertainty estimates
-            uncertainty_estimates = self.xp.exp(log_uncertainty.q_values.data)
+            # the uncertainty estimates should be positive, so add a lower threshold min_var
+            min_var = self.xp.float32(0.001)
+            uncertainty_estimates_values = self.xp.maximum(uncertainty_estimates.q_values.data , min_var)
             noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-            self.bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates))
+            self.bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates_values))
             action_value_adjusted = action_value.q_values.data + self.bonus
             self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
             greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
@@ -167,7 +168,7 @@ class UBE_DQN(dqn.DQN):
         self.average_q += (1 - self.average_q_decay) * q
 
         self.average_q_subnet *= self.average_q_decay
-        self.average_q_subnet += (1 - self.average_q_decay) * float(uncertainty_estimates[:,action])
+        self.average_q_subnet += (1 - self.average_q_decay) * float(uncertainty_estimates_values[:,action])
 
         self.logger.debug('t:%s q:%s action_value:%s', self.t, q, action_value)
 
@@ -195,7 +196,7 @@ class UBE_DQN(dqn.DQN):
                 self.last_action,
                 s_next=obs,
                 a_next=action,
-                uncertainty_next=float(uncertainty_estimates[:,action]))
+                uncertainty_next=float(uncertainty_estimates_values[:,action]))
 
 
         self.last_state = obs
