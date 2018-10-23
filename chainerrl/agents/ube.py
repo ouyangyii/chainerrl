@@ -110,10 +110,7 @@ class UBE_DQN(dqn.DQN):
         # Update stats
         self.average_loss_subnet *= self.average_loss_decay
         self.average_loss_subnet += (1 - self.average_loss_decay) * float(loss_subnet.data)
-            #debug:
-        # print([y_uncertainty,loss_subnet.data])
-        # if loss_subnet.data > 1000:
-            # set_trace()
+
         # take a gradient step for the subnet
         self.uncertainty_subnet.cleargrads()
         loss_subnet.backward()
@@ -141,7 +138,6 @@ class UBE_DQN(dqn.DQN):
             # the uncertainty estimates
             uncertainty_estimates = self.xp.exp(log_uncertainty.q_values.data)
             noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-            # if self.last_state is None:
             self.bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates))
             action_value_adjusted = action_value.q_values.data + self.bonus
             self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
@@ -160,7 +156,7 @@ class UBE_DQN(dqn.DQN):
         # initialization of the cov Sigma for all actions
         if self.Sigma is None:
             n_features = features_vec.shape[0]
-            mu = 1 # scale for the initial cov matrix
+            mu = 3 # scale for the initial cov matrix
             self.Sigma = self.xp.zeros((n_actions,n_features,n_features), dtype=self.xp.float32)
             for act_id in range(n_actions):
                 self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
