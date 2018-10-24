@@ -69,57 +69,73 @@ class UBE_DQN(dqn.DQN):
         self.uncertainty_subnet = kwargs.pop('uncertainty_subnet')
         self.optimizer_subnet = kwargs.pop('optimizer_subnet')
         self.beta = kwargs.pop('beta',0.01)
-        #self.n_step = kwargs.pop('n_step', 150)
+        self.n_step = kwargs.pop('n_step', 150)
         super().__init__(*args, **kwargs)
         self.Sigma = None
         self.last_features_vec = None
         self.last_hidden_layer_value = None
         self.noise = 0
+        self.nu_history = []
+        self.action_history = []
+        self.hidden_layer_value_history = []
+
         self.average_loss_subnet = 0
         self.average_q_subnet = 0
         if self.gpu is not None and self.gpu >= 0:
             cuda.get_device(self.gpu).use()
             self.uncertainty_subnet.to_gpu(device=self.gpu)
 
-    def update_uncertainty_subnet(self, features_vec,hidden_layer_value, a, s_next=None, a_next=None, uncertainty_next=None):
+
+    def compute_uncertainty_parms(self, a, features_vec):
         """
-        update params for the uncertainty subnet, and also the cov Sigma
+        compute params used in the update of the uncertainty subnet
 
         Args:
-            (s,a): current state and action
-            (s_next,a_next): next state and action
+            (s,a): current state and action, s is omitted
             features_vec: phi(s), the last layer of the subnetwork
-            hidden_layer_value: the input to the uncertainty subnetwork
-            uncertainty_next: the computed uncertainty value for (s_next,a_next)
         """
         n_features = features_vec.shape[0]
         Sigma_a = self.Sigma[a, :, :]
         Sigma_a = Sigma_a.reshape(n_features, n_features)
         # compute the uncertainty value y, which is the target for the uncertainty subnetwork
-        y_step1 = Sigma_a @ features_vec  # Sigma phi
-        y_step2 = float(features_vec.T @ y_step1) # phi^T Sigma phi, a scalar
-        y_uncertainty = y_step2
-        if s_next is not None:
-            assert a_next is not None
-            y_uncertainty += (self.gamma ** 2) * uncertainty_next
 
-        # the loss function of the subnet
-        uncertainty_for_update = self.uncertainty_subnet(hidden_layer_value).q_values[:,a]
-        loss_subnet = F.square(y_uncertainty - uncertainty_for_update)
-
-        # Update stats
-        self.average_loss_subnet *= self.average_loss_decay
-        self.average_loss_subnet += (1 - self.average_loss_decay) * float(loss_subnet.data)
-
-        # take a gradient step for the subnet
-        self.uncertainty_subnet.cleargrads()
-        loss_subnet.backward()
-        self.optimizer_subnet.update()
+        # compute the estimates of instantaneous uncertainty signal nu
+        # these values will be used in the loss function of the uncertainty subnetwork
+        nu_step1 = Sigma_a @ features_vec  # Sigma phi
+        nu_current = float(features_vec.T @ nu_step1) # phi^T Sigma phi, a scalar
+        self.nu_history.append(nu_current)
 
         # update the variances from observations
-        Sigma_dif = (y_step1 @ y_step1.T) / (1 + y_step2)
+        Sigma_dif = (nu_step1 @ nu_step1.T) / (1 + nu_current)
         Sigma_a = Sigma_a - Sigma_dif
         self.Sigma[a, :, :] = Sigma_a
+
+
+    def update_uncertainty_subnet(self, uncertainty_next=0.0):
+        """
+        update the uncertainty subnetwork
+
+        Args:
+            uncertainty_next: the computed uncertainty value for (s_next,a_next)
+        """
+        y_uncertainty = uncertainty_next
+
+        while self.action_history:
+            # compute the accumulated uncertainty signal with discounter factor gamma^2
+            y_uncertainty = (self.gamma **2) * y_uncertainty + self.nu_history.pop()
+            # the loss function of the subnet
+            uncertainty_for_update = self.uncertainty_subnet(self.hidden_layer_value_history.pop()).q_values[:,self.action_history.pop()]
+            loss_subnet = F.square(y_uncertainty - uncertainty_for_update)
+
+            # Update stats
+            self.average_loss_subnet *= self.average_loss_decay
+            self.average_loss_subnet += (1 - self.average_loss_decay) * float(loss_subnet.data)
+
+            # take a gradient step for the subnet
+            self.uncertainty_subnet.cleargrads()
+            loss_subnet.backward()
+            self.optimizer_subnet.update()
+
 
     def act_and_train(self, obs, reward):
         with chainer.using_config('train', False), chainer.no_backprop_mode():
@@ -149,6 +165,12 @@ class UBE_DQN(dqn.DQN):
             self.t, lambda: greedy_action, action_value=action_value)
 
 
+        # update date the uncertainty subnetwork every n_step steps
+        if len(self.action_history) >= self.n_step:
+            assert len(self.action_history) == len(self.nu_history)
+            assert len(self.action_history) == len(self.hidden_layer_value_history)
+            uncertainty_next = float(uncertainty_estimates_values[:, action])
+            self.update_uncertainty_subnet(uncertainty_next)
 
         # the value of the last hidden layer is the feature vector used in UBE
         features_vec = self.uncertainty_subnet.layer_cached_value.data
@@ -161,6 +183,11 @@ class UBE_DQN(dqn.DQN):
             self.Sigma = self.xp.zeros((n_actions,n_features,n_features), dtype=self.xp.float32)
             for act_id in range(n_actions):
                 self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
+
+        # compute and store parameters for the uncertainty subnetwork
+        self.compute_uncertainty_parms(action, features_vec)
+        self.action_history.append(action)
+        self.hidden_layer_value_history.append(hidden_layer_value)
 
 
         # Update stats
@@ -189,14 +216,6 @@ class UBE_DQN(dqn.DQN):
                 next_state=obs,
                 next_action=action,
                 is_state_terminal=False)
-            # update the uncertainty subnetwork
-            self.update_uncertainty_subnet(
-                self.last_features_vec,
-                self.last_hidden_layer_value,
-                self.last_action,
-                s_next=obs,
-                a_next=action,
-                uncertainty_next=float(uncertainty_estimates_values[:,action]))
 
 
         self.last_state = obs
@@ -214,10 +233,7 @@ class UBE_DQN(dqn.DQN):
         """ Need to train the uncertainty subnetwork when an episode ends
         """
         # update the uncertainty subnetwork with no next state
-        self.update_uncertainty_subnet(
-            self.last_features_vec,
-            self.last_hidden_layer_value,
-            self.last_action)
+        self.update_uncertainty_subnet()
 
         super().stop_episode_and_train(state, reward, done)
 

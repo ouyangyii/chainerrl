@@ -1,14 +1,10 @@
-"""An example of training DQN against OpenAI Gym Envs.
+"""An example of training UBE-DQN against OpenAI Gym Envs.
 
-This script is an example of training a DQN agent against OpenAI Gym envs.
-Both discrete and continuous action spaces are supported. For continuous action
-spaces, A NAF (Normalized Advantage Function) is used to approximate Q-values.
+This script is an example of training a UBE-DQN agent against OpenAI Gym envs.
+Only discrete spaces are supported.
 
 To solve CartPole-v0, run:
-    python train_dqn_gym.py --env CartPole-v0
-
-To solve Pendulum-v0, run:
-    python train_dqn_gym.py --env Pendulum-v0
+    python train_ube_dqn_gym.py --env CartPole-v0
 """
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -36,7 +32,6 @@ from chainerrl.action_value import DiscreteActionValue
 
 
 import chainerrl
-from chainerrl.agents.dqn import DQN
 from chainerrl import experiments
 from chainerrl import explorers
 from chainerrl import links
@@ -82,6 +77,12 @@ def main():
     parser.add_argument('--render-eval', action='store_true')
     parser.add_argument('--monitor', action='store_true')
     parser.add_argument('--reward-scale-factor', type=float, default=1e-3)
+
+    # added for UBE
+    parser.add_argument('--extra-exploration', action='store_true')
+    parser.add_argument('--beta', type=float, default=1e-2)
+    parser.add_argument('--n-step', type=int, default=1)
+
     args = parser.parse_args()
 
     # Set a random seed used in ChainerRL
@@ -120,28 +121,6 @@ def main():
     obs_size = obs_space.low.size
     action_space = env.action_space
 
-    if isinstance(action_space, spaces.Box):
-        action_size = action_space.low.size
-        # Use NAF to apply DQN to continuous action spaces
-        q_func = q_functions.FCQuadraticStateQFunction(
-            obs_size, action_size,
-            n_hidden_channels=args.n_hidden_channels,
-            n_hidden_layers=args.n_hidden_layers,
-            action_space=action_space)
-        # Use the Ornstein-Uhlenbeck process for exploration
-        ou_sigma = (action_space.high - action_space.low) * 0.2
-        explorer = explorers.AdditiveOU(sigma=ou_sigma)
-    else:
-        n_actions = action_space.n
-        q_func = q_functions.FCStateQFunctionWithDiscreteAction(
-            obs_size, n_actions,
-            n_hidden_channels=args.n_hidden_channels,
-            n_hidden_layers=args.n_hidden_layers)
-        # Use epsilon-greedy for exploration
-        explorer = explorers.LinearDecayEpsilonGreedy(
-            args.start_epsilon, args.end_epsilon, args.final_exploration_steps,
-            action_space.sample)
-
     # testing UBE, only for discrete action now
     n_actions = action_space.n
     # q_func share the first hidden layer with the subnet
@@ -153,13 +132,17 @@ def main():
             n_hidden_channels=args.n_hidden_channels,
             n_hidden_layers=args.n_hidden_layers-1))
 
+    # No explorer for UBE unless extra exploration is used
+    explorer = explorers.Greedy()
+    if args.extra_exploration is True:
+        # Use epsilon-greedy for exploration
+        explorer = explorers.LinearDecayEpsilonGreedy(
+            args.start_epsilon, args.end_epsilon, args.final_exploration_steps,
+            action_space.sample)
     if args.noisy_net_sigma is not None:
         links.to_factorized_noisy(q_func)
         # Turn off explorer
         explorer = explorers.Greedy()
-    # Turn off explorer for UBE
-    # debug:
-    explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
     chainerrl.misc.draw_computational_graph(
@@ -193,7 +176,7 @@ def main():
 
     # define the uncertainty subnetwork with one hidden layer
     # it's last layer is layer[0] since there is an output layer and an actionvalue layer
-    # the bias is initialized with a large positive value
+    # the bias is initialized with a large positive value, which is set to be the width of the last layer
     uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
         L.Linear(args.n_hidden_channels, args.n_hidden_channels),
         F.relu,
@@ -217,7 +200,9 @@ def main():
                 soft_update_tau=args.soft_update_tau,
                 episodic_update=args.episodic_replay, episodic_update_len=16,
                   uncertainty_subnet = uncertainty_subnet,
-                  optimizer_subnet = optimizer_subnet)
+                  optimizer_subnet = optimizer_subnet,
+                  beta = args.beta,
+                  n_step = args.n_step)
 
     if args.load:
         agent.load(args.load)
