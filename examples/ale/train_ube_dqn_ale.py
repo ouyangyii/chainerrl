@@ -120,6 +120,12 @@ def main():
                         help='Learning rate')
     parser.add_argument('--prioritized', action='store_true', default=False,
                         help='Use prioritized experience replay.')
+
+    # added for UBE
+    parser.add_argument('--extra-exploration', action='store_true')
+    parser.add_argument('--beta', type=float, default=1e-2)
+    parser.add_argument('--n-step', type=int, default=1)
+
     args = parser.parse_args()
 
     import logging
@@ -157,12 +163,25 @@ def main():
     n_actions = env.action_space.n
     q_func = parse_arch(args.arch, n_actions)
 
+
+    # explorer = explorers.LinearDecayEpsilonGreedy(
+    #     1.0, args.final_epsilon,
+    #     args.final_exploration_frames,
+    #     lambda: np.random.randint(n_actions))
+
+    # No explorer for UBE unless extra exploration is used
+    explorer = explorers.Greedy()
+    if args.extra_exploration is True:
+        # Use epsilon-greedy for exploration
+        explorer = explorers.LinearDecayEpsilonGreedy(
+        1.0, args.final_epsilon,
+        args.final_exploration_frames,
+        lambda: np.random.randint(n_actions))
+
     if args.noisy_net_sigma is not None:
         links.to_factorized_noisy(q_func)
         # Turn off explorer
         explorer = explorers.Greedy()
-    # Turn off explorer for UBE
-    explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
     chainerrl.misc.draw_computational_graph(
@@ -184,10 +203,7 @@ def main():
     else:
         rbuf = replay_buffer.ReplayBuffer(10 ** 6)
 
-    # explorer = explorers.LinearDecayEpsilonGreedy(
-    #     1.0, args.final_epsilon,
-    #     args.final_exploration_frames,
-    #     lambda: np.random.randint(n_actions))
+
 
     def phi(x):
         # Feature extractor
@@ -219,7 +235,9 @@ def main():
                   batch_accumulator='sum',
                   phi=phi ,
                   uncertainty_subnet = uncertainty_subnet,
-                  optimizer_subnet = optimizer_subnet
+                  optimizer_subnet = optimizer_subnet,
+                  beta=args.beta,
+                  n_step=args.n_step
                 )
 
     if args.load:
