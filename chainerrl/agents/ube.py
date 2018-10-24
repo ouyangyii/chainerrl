@@ -74,7 +74,7 @@ class UBE_DQN(dqn.DQN):
         self.Sigma = None
         self.last_features_vec = None
         self.last_hidden_layer_value = None
-        self.bonus = 0
+        self.noise = 0
         self.average_loss_subnet = 0
         self.average_q_subnet = 0
         if self.gpu is not None and self.gpu >= 0:
@@ -138,9 +138,9 @@ class UBE_DQN(dqn.DQN):
             # the uncertainty estimates should be positive, so add a lower threshold min_var
             min_var = self.xp.float32(0.001)
             uncertainty_estimates_values = self.xp.maximum(uncertainty_estimates.q_values.data , min_var)
-            noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-            self.bonus = self.beta * self.xp.multiply(noise,self.xp.sqrt(uncertainty_estimates_values))
-            action_value_adjusted = action_value.q_values.data + self.bonus
+            self.noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
+            bonus = self.beta * self.xp.multiply(self.noise,self.xp.sqrt(uncertainty_estimates_values))
+            action_value_adjusted = action_value.q_values.data + bonus
             self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
             greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
 
