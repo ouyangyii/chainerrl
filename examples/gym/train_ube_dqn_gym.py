@@ -124,13 +124,16 @@ def main():
     # testing UBE, only for discrete action now
     n_actions = action_space.n
     # q_func share the first hidden layer with the subnet
-    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
-            L.Linear(obs_size, args.n_hidden_channels),
-            F.relu,
-            q_functions.FCStateQFunctionWithDiscreteAction(
-            args.n_hidden_channels, n_actions,
-            n_hidden_channels=args.n_hidden_channels,
-            n_hidden_layers=args.n_hidden_layers-1))
+    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(
+            links.mlp.MLP(
+                in_size=obs_size, out_size=args.n_hidden_channels,
+                hidden_sizes=[args.n_hidden_channels] * (args.n_hidden_layers-1),
+                nonlinearity=F.relu,
+                last_wscale=1.0),
+            L.Linear(args.n_hidden_channels, n_actions),
+            DiscreteActionValue,
+            layer_indices = [0,0]
+            )
 
     # No explorer for UBE unless extra exploration is used
     explorer = explorers.Greedy()
@@ -145,9 +148,9 @@ def main():
         explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
-    chainerrl.misc.draw_computational_graph(
-        [q_func(np.zeros_like(obs_space.low, dtype=np.float32)[None])],
-        os.path.join(args.outdir, 'model'))
+    # chainerrl.misc.draw_computational_graph(
+    #     [q_func(np.zeros_like(obs_space.low, dtype=np.float32)[None])],
+    #     os.path.join(args.outdir, 'model'))
 
     opt = optimizers.Adam()
     opt.setup(q_func)
@@ -177,7 +180,7 @@ def main():
     # define the uncertainty subnetwork with one hidden layer
     # it's last layer is layer[0] since there is an output layer and an actionvalue layer
     # the bias is initialized with a large positive value, which is set to be the width of the last layer
-    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
+    uncertainty_subnet = links.Sequence(
         L.Linear(args.n_hidden_channels, args.n_hidden_channels),
         F.relu,
         L.Linear(args.n_hidden_channels, n_actions,initial_bias = 1.0*args.n_hidden_channels ),

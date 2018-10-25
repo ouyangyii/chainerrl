@@ -163,6 +163,9 @@ def main():
     n_actions = env.action_space.n
     q_func = parse_arch(args.arch, n_actions)
 
+    # change the structure of q_func, the first layer's output will be feed to the subnet
+    # the first layer's output is also the output of the last hidden layer
+    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(*q_func.layers, layer_indices=[0, 0])
 
     # explorer = explorers.LinearDecayEpsilonGreedy(
     #     1.0, args.final_epsilon,
@@ -211,12 +214,9 @@ def main():
 
     # Agent = parse_agent(args.agent)
     # testing UBE
-    # change the structure of q_func, the first layer's output will be feed to the subnet
-    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(0, *q_func.layers)
     # define the uncertainty subnetwork with one hidden layer
-    # it's last layer is layer[0] since there is an output layer and an actionvalue layer
     # the bias is initialized with a large positive value
-    uncertainty_subnet = chainerrl.agents.ube.SequenceCachedHiddenValue(1,
+    uncertainty_subnet = links.Sequence(
         L.Linear(512, 512),
         F.relu,
         L.Linear(512, n_actions,initial_bias = 1.0*512),

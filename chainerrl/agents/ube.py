@@ -28,14 +28,21 @@ class SequenceCachedHiddenValue(links.Sequence):
     """Sequential callable Link that consists of other Links where the value of each link is cached after a call
 
     """
-    def __init__(self, layer_index, *layers):
+    def __init__(self, *layers, **kwargs):
+        """
+        Args:
+            layer_indices: the layers whose values will be cached
+            layers: layers of the network
+
+            """
         super().__init__(*layers)
-        # self.layer_cached_values = [None] * len(self.layers)
-        self.layer_index = layer_index
-        self.layer_cached_value = None
+        self.layer_indices = kwargs.pop('layer_indices', [])
+        self.layer_indices.sort()
+        self.layer_cached_values = []
 
     def __call__(self, x, **kwargs):
         h = x
+        lay_count = 0
         for (index,layer), argnames, accept_var_args in zip(enumerate(self.layers),
                                                     self.argnames,
                                                     self.accept_var_args):
@@ -45,8 +52,10 @@ class SequenceCachedHiddenValue(links.Sequence):
                 layer_kwargs = {k: v for k, v in kwargs.items()
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
-            if index == self.layer_index:
-                self.layer_cached_value = h
+            while lay_count < len(self.layer_indices) and index == self.layer_indices[lay_count]:
+                self.layer_cached_values.append(h)
+                lay_count += 1
+
         return h
 
 
@@ -72,8 +81,6 @@ class UBE_DQN(dqn.DQN):
         self.n_step = kwargs.pop('n_step', 150)
         super().__init__(*args, **kwargs)
         self.Sigma = None
-        self.last_features_vec = None
-        self.last_hidden_layer_value = None
         self.noise = 0
         self.nu_history = []
         self.action_history = []
@@ -104,7 +111,6 @@ class UBE_DQN(dqn.DQN):
         nu_step1 = Sigma_a @ features_vec  # Sigma phi
         nu_current = float(features_vec.T @ nu_step1) # phi^T Sigma phi, a scalar
         self.nu_history.append(nu_current)
-
         # update the variances from observations
         Sigma_dif = (nu_step1 @ nu_step1.T) / (1 + nu_current)
         Sigma_a = Sigma_a - Sigma_dif
@@ -144,7 +150,7 @@ class UBE_DQN(dqn.DQN):
             q = float(action_value.max.data)
 
             # uncertainty_subnet takes input from the first hidden layer of the main Q-network
-            hidden_layer_value = self.model.layer_cached_value
+            hidden_layer_value = self.model.layer_cached_values[0]
             uncertainty_estimates = self.uncertainty_subnet(hidden_layer_value)
 
             # add noise to Q-value to perform Thompson sampling for exploration
@@ -172,8 +178,8 @@ class UBE_DQN(dqn.DQN):
             uncertainty_next = float(uncertainty_estimates_values[:, action])
             self.update_uncertainty_subnet(uncertainty_next)
 
-        # the value of the last hidden layer is the feature vector used in UBE
-        features_vec = self.uncertainty_subnet.layer_cached_value.data
+        # the value of the last hidden layer of the Q function is the feature vector used in UBE
+        features_vec = self.model.layer_cached_values[1].data
         features_vec = features_vec.reshape([-1, 1])
 
         # initialization of the cov Sigma for all actions
@@ -184,11 +190,11 @@ class UBE_DQN(dqn.DQN):
             for act_id in range(n_actions):
                 self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
 
-        # debug:
-        sig_det = []
-        for act_id in range(n_actions):
-                sig_det.append(self.xp.linalg.det(self.Sigma[act_id,:,:]))
-        self.logger.debug('det of Sigma:%s', sig_det)
+        # # debug:
+        # sig_det = []
+        # for act_id in range(n_actions):
+        #         sig_det.append(self.xp.linalg.det(self.Sigma[act_id,:,:]))
+        # self.logger.debug('det of Sigma:%s', sig_det)
 
 
         # compute and store parameters for the uncertainty subnetwork
@@ -227,8 +233,6 @@ class UBE_DQN(dqn.DQN):
 
         self.last_state = obs
         self.last_action = action
-        self.last_features_vec = features_vec
-        self.last_hidden_layer_value = hidden_layer_value
 
         self.replay_updater.update_if_necessary(self.t)
 
