@@ -185,7 +185,7 @@ def main():
 
 
     # the optimizer for the subnetwork
-    optimizer_subnet = optimizers.RMSprop(lr=1e-3)
+    optimizer_subnet = optimizers.RMSprop(lr=1e-3, alpha = 0.95, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
 
     # debug:

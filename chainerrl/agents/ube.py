@@ -184,6 +184,13 @@ class UBE_DQN(dqn.DQN):
             for act_id in range(n_actions):
                 self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
 
+        # debug:
+        sig_det = []
+        for act_id in range(n_actions):
+                sig_det.append(self.xp.linalg.det(self.Sigma[act_id,:,:]))
+        self.logger.debug('det of Sigma:%s', sig_det)
+
+
         # compute and store parameters for the uncertainty subnetwork
         self.compute_uncertainty_parms(action, features_vec)
         self.action_history.append(action)
