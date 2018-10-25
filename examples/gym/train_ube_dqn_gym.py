@@ -132,7 +132,8 @@ def main():
                 last_wscale=1.0),
             L.Linear(args.n_hidden_channels, n_actions),
             DiscreteActionValue,
-            layer_indices = [0,0]
+            # layer_indices = [0,0]
+            layer_indices=0
             )
 
     # No explorer for UBE unless extra exploration is used
