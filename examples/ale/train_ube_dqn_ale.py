@@ -166,6 +166,8 @@ def main():
     # change the structure of q_func, the first layer's output will be feed to the subnet
     # the first layer's output is also the output of the last hidden layer
     q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(*q_func.layers, layer_indices=[0,0])
+    q_func(np.zeros((4, 84, 84), dtype=np.float32)[None])
+
 
     # explorer = explorers.LinearDecayEpsilonGreedy(
     #     1.0, args.final_epsilon,

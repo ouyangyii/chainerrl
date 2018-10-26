@@ -135,6 +135,8 @@ def main():
             layer_indices = [0,0]
             # layer_indices=0
             )
+    q_func(np.zeros_like(obs_space.low, dtype=np.float32)[None])
+
 
     # No explorer for UBE unless extra exploration is used
     explorer = explorers.Greedy()
