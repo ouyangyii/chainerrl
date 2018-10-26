@@ -36,9 +36,11 @@ class SequenceCachedHiddenValue(links.Sequence):
 
             """
         super().__init__(*layers)
-        self.layer_indices = kwargs.pop('layer_indices')
-        # self.layer_indices.sort()
-        self.layer_cached_values = None
+
+        with self.init_scope():
+            self.layer_indices = kwargs.pop('layer_indices', [])
+            self.layer_indices.sort()
+            self.layer_cached_values = []
 
     def __call__(self, x, **kwargs):
         h = x
@@ -52,13 +54,13 @@ class SequenceCachedHiddenValue(links.Sequence):
                 layer_kwargs = {k: v for k, v in kwargs.items()
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
-            if index == self.layer_indices:
-                # self.layer_cached_values.append(h)
-                self.layer_cached_values = h
+            # if index == self.layer_indices:
+                # # self.layer_cached_values.append(h)
+                # self.layer_cached_values = h
+                # lay_count += 1
+            while lay_count < len(self.layer_indices) and index == self.layer_indices[lay_count]:
+                self.layer_cached_values.append(h)
                 lay_count += 1
-            # while lay_count < len(self.layer_indices) and index == self.layer_indices[lay_count]:
-            #     self.layer_cached_values.append(h)
-            #     lay_count += 1
 
         return h
 
@@ -154,7 +156,7 @@ class UBE_DQN(dqn.DQN):
             q = float(action_value.max.data)
 
             # uncertainty_subnet takes input from the first hidden layer of the main Q-network
-            hidden_layer_value = self.model.layer_cached_values
+            hidden_layer_value = self.model.layer_cached_values[0]
             uncertainty_estimates = self.uncertainty_subnet(hidden_layer_value)
 
             # add noise to Q-value to perform Thompson sampling for exploration
@@ -183,7 +185,7 @@ class UBE_DQN(dqn.DQN):
             self.update_uncertainty_subnet(uncertainty_next)
 
         # the value of the last hidden layer of the Q function is the feature vector used in UBE
-        features_vec = self.model.layer_cached_values.data
+        features_vec = self.model.layer_cached_values[1].data
         features_vec = features_vec.reshape([-1, 1])
 
         # initialization of the cov Sigma for all actions

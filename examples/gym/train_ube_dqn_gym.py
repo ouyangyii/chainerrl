@@ -132,8 +132,8 @@ def main():
                 last_wscale=1.0),
             L.Linear(args.n_hidden_channels, n_actions),
             DiscreteActionValue,
-            # layer_indices = [0,0]
-            layer_indices=0
+            layer_indices = [0,0]
+            # layer_indices=0
             )
 
     # No explorer for UBE unless extra exploration is used
@@ -189,7 +189,7 @@ def main():
 
 
     # the optimizer for the subnetwork
-    optimizer_subnet = optimizers.RMSprop(lr=1e-3, alpha = 0.95, eps=1e-2)
+    optimizer_subnet = optimizers.RMSprop(lr=1e-2, alpha = 0.99, eps=1e-3)
     optimizer_subnet.setup(uncertainty_subnet)
 
     # debug:
