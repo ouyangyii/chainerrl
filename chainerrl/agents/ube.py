@@ -43,7 +43,8 @@ class SequenceCachedHiddenValue(links.Sequence):
     def to_gpu(self, device=None):
         # move cached values to gpu
         for value in self.layer_cached_values:
-            value = cuda.to_gpu(value, device=device)
+            value.to_gpu()
+            # value = cuda.to_gpu(value, device=device)
         super().to_gpu(device)
 
     def __call__(self, x, **kwargs):
