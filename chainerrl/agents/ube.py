@@ -35,12 +35,13 @@ class SequenceCachedHiddenValue(links.Sequence):
             layers: layers of the network
 
             """
-        super().__init__(*layers)
-
         with self.init_scope():
             self.layer_indices = kwargs.pop('layer_indices', [])
             self.layer_indices.sort()
             self.layer_cached_values = []
+        super().__init__(*layers)
+
+
 
     def __call__(self, x, **kwargs):
         h = x
