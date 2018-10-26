@@ -60,6 +60,9 @@ class SequenceCachedHiddenValue(links.Sequence):
                 # self.layer_cached_values = h
                 # lay_count += 1
             while lay_count < len(self.layer_indices) and index == self.layer_indices[lay_count]:
+                # debug:
+                print(type(h.data))
+                set_trace()
                 self.layer_cached_values.append(h)
                 lay_count += 1
 
