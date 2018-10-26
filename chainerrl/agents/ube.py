@@ -35,13 +35,15 @@ class SequenceCachedHiddenValue(links.Sequence):
             layers: layers of the network
 
             """
-        with self.init_scope():
-            self.layer_indices = kwargs.pop('layer_indices', [])
-            self.layer_indices.sort()
-            self.layer_cached_values = []
+        self.layer_indices = kwargs.pop('layer_indices', [])
+        self.layer_indices.sort()
+        self.layer_cached_values = []
         super().__init__(*layers)
 
-
+    def to_gpu(self, device=None):
+        # move cached values to gpu
+        self.layer_cached_values = cuda.to_gpu(self.layer_cached_values, device=device)
+        super().to_gpu(device)
 
     def __call__(self, x, **kwargs):
         h = x
@@ -60,9 +62,6 @@ class SequenceCachedHiddenValue(links.Sequence):
                 # self.layer_cached_values = h
                 # lay_count += 1
             while lay_count < len(self.layer_indices) and index == self.layer_indices[lay_count]:
-                # debug:
-                print(type(h.data))
-                set_trace()
                 self.layer_cached_values.append(h)
                 lay_count += 1
 
