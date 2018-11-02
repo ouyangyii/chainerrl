@@ -35,7 +35,7 @@ class SequenceCachedHiddenValue(links.Sequence):
             """
         self.layers_to_cache = kwargs.pop('layers_to_cach', [])
         self.layers_to_cache.sort()
-        self.cached_values = []
+        self.cached_values = [None]*len(self.layers_to_cache)
         super().__init__(*layers)
 
     def to_gpu(self, device=None):
@@ -57,7 +57,7 @@ class SequenceCachedHiddenValue(links.Sequence):
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
             while lay_count < len(self.layers_to_cache) and index == self.layers_to_cache[lay_count]:
-                self.cached_values.append(copy.deepcopy(h))
+                self.cached_values[lay_count] = copy.deepcopy(h)
                 lay_count += 1
 
         return h
