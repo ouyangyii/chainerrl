@@ -132,7 +132,7 @@ def main():
                 last_wscale=1.0),
             L.Linear(args.n_hidden_channels, n_actions),
             DiscreteActionValue,
-            layer_indices = [0,0]
+            layers_to_cach = [0,0]
             # layer_indices=0
             )
     q_func(np.zeros_like(obs_space.low, dtype=np.float32)[None])

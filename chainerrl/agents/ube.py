@@ -5,6 +5,11 @@ from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()  # NOQA
 
+
+
+import copy
+
+
 import chainer
 import chainer.links as L
 import chainer.functions as F
@@ -31,21 +36,22 @@ class SequenceCachedHiddenValue(links.Sequence):
     def __init__(self, *layers, **kwargs):
         """
         Args:
-            layer_indices: the layers whose values will be cached
+            layer_indices: a list of layer indices whose values will be cached
             layers: layers of the network
 
             """
-        self.layer_indices = kwargs.pop('layer_indices', [])
-        self.layer_indices.sort()
-        self.layer_cached_values = []
+        self.layers_to_cache = kwargs.pop('layers_to_cach', [])
+        self.layers_to_cache.sort()
         super().__init__(*layers)
+        self.register_persistent('layers_to_cache')
+        self.add_persistent('cached_values', [])
 
-    def to_gpu(self, device=None):
-        # move cached values to gpu
-        for value in self.layer_cached_values:
-            value.to_gpu(device)
-            # value = cuda.to_gpu(value, device=device)
-        super().to_gpu(device)
+    # def to_gpu(self, device=None):
+    #     # move cached values to gpu
+    #     for value in self.layer_cached_values:
+    #         value.to_gpu(device)
+    #         # value = cuda.to_gpu(value, device=device)
+    #     super().to_gpu(device)
 
     def __call__(self, x, **kwargs):
         h = x
@@ -59,12 +65,9 @@ class SequenceCachedHiddenValue(links.Sequence):
                 layer_kwargs = {k: v for k, v in kwargs.items()
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
-            # if index == self.layer_indices:
-                # # self.layer_cached_values.append(h)
-                # self.layer_cached_values = h
-                # lay_count += 1
-            while lay_count < len(self.layer_indices) and index == self.layer_indices[lay_count]:
-                self.layer_cached_values.append(h)
+            while lay_count < len(self.layers_to_cache) and index == self.layers_to_cache[lay_count]:
+
+                self.cached_values.append(copy.deepcopy(h))
                 lay_count += 1
 
         return h
@@ -161,7 +164,7 @@ class UBE_DQN(dqn.DQN):
             q = float(action_value.max.data)
 
             # uncertainty_subnet takes input from the first hidden layer of the main Q-network
-            hidden_layer_value = self.model.layer_cached_values[0]
+            hidden_layer_value = self.model.cached_values[0]
             uncertainty_estimates = self.uncertainty_subnet(hidden_layer_value)
 
             # add noise to Q-value to perform Thompson sampling for exploration
@@ -190,7 +193,7 @@ class UBE_DQN(dqn.DQN):
             self.update_uncertainty_subnet(uncertainty_next)
 
         # the value of the last hidden layer of the Q function is the feature vector used in UBE
-        features_vec = self.model.layer_cached_values[1].data
+        features_vec = self.model.cached_values[1].data
         features_vec = features_vec.reshape([-1, 1])
 
         # initialization of the cov Sigma for all actions
