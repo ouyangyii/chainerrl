@@ -68,7 +68,7 @@ def main():
     parser.add_argument('--soft-update-tau', type=float, default=1e-2)
     parser.add_argument('--update-interval', type=int, default=1)
     parser.add_argument('--eval-n-runs', type=int, default=100)
-    parser.add_argument('--eval-interval', type=int, default=10 ** 3)
+    parser.add_argument('--eval-interval', type=int, default=10 ** 4)
     parser.add_argument('--n-hidden-channels', type=int, default=100)
     parser.add_argument('--n-hidden-layers', type=int, default=2)
     parser.add_argument('--gamma', type=float, default=0.99)

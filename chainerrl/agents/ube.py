@@ -15,15 +15,8 @@ import chainer.links as L
 import chainer.functions as F
 from chainer import cuda
 
-import chainerrl
-from chainerrl.action_value import DiscreteActionValue
-from chainerrl import agents
-from chainerrl import experiments
-from chainerrl import explorers
 from chainerrl import links
-from chainerrl import misc
 from chainerrl.agents import dqn
-from chainerrl import replay_buffer
 
 # to begin from here
 from pdb import set_trace
@@ -42,10 +35,8 @@ class SequenceCachedHiddenValue(links.Sequence):
             """
         self.layers_to_cache = kwargs.pop('layers_to_cach', [])
         self.layers_to_cache.sort()
-        super().__init__(*layers)
-        # self.register_persistent('layers_to_cache')
-        # self.add_persistent('cached_values', [])
         self.cached_values = []
+        super().__init__(*layers)
 
     def to_gpu(self, device=None):
         # move cached values to gpu
@@ -66,7 +57,6 @@ class SequenceCachedHiddenValue(links.Sequence):
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
             while lay_count < len(self.layers_to_cache) and index == self.layers_to_cache[lay_count]:
-
                 self.cached_values.append(copy.deepcopy(h))
                 lay_count += 1
 
@@ -124,7 +114,7 @@ class UBE_DQN(dqn.DQN):
         # these values will be used in the loss function of the uncertainty subnetwork
         nu_step1 = Sigma_a @ features_vec  # Sigma phi
         nu_current = float(features_vec.T @ nu_step1) # phi^T Sigma phi, a scalar
-        self.nu_history.append(nu_current)
+        self.nu_history.append(copy.deepcopy(nu_current))
         # update the variances from observations
         Sigma_dif = (nu_step1 @ nu_step1.T) / (1 + nu_current)
         Sigma_a = Sigma_a - Sigma_dif
@@ -204,17 +194,11 @@ class UBE_DQN(dqn.DQN):
             for act_id in range(n_actions):
                 self.Sigma[act_id,:,:] = mu*self.xp.eye(n_features)
 
-        # # debug:
-        # sig_det = []
-        # for act_id in range(n_actions):
-        #         sig_det.append(self.xp.linalg.det(self.Sigma[act_id,:,:]))
-        # self.logger.debug('det of Sigma:%s', sig_det)
-
 
         # compute and store parameters for the uncertainty subnetwork
         self.compute_uncertainty_parms(action, features_vec)
-        self.action_history.append(action)
-        self.hidden_layer_value_history.append(hidden_layer_value)
+        self.action_history.append(copy.deepcopy(action))
+        self.hidden_layer_value_history.append(copy.deepcopy(hidden_layer_value))
 
 
         # Update stats
@@ -259,10 +243,9 @@ class UBE_DQN(dqn.DQN):
         """
         # update the uncertainty subnetwork with no next state
         self.update_uncertainty_subnet()
-
         super().stop_episode_and_train(state, reward, done)
 
-    # print also stats
+    # print also the stats of the subnet
     def get_statistics(self):
         return [
             ('average_q', self.average_q),
