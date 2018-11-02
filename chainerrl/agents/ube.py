@@ -114,7 +114,7 @@ class UBE_DQN(dqn.DQN):
         # these values will be used in the loss function of the uncertainty subnetwork
         nu_step1 = Sigma_a @ features_vec  # Sigma phi
         nu_current = float(features_vec.T @ nu_step1) # phi^T Sigma phi, a scalar
-        self.nu_history.append(copy.deepcopy(nu_current))
+        self.nu_history.append(nu_current)
         # update the variances from observations
         Sigma_dif = (nu_step1 @ nu_step1.T) / (1 + nu_current)
         Sigma_a = Sigma_a - Sigma_dif
@@ -168,7 +168,7 @@ class UBE_DQN(dqn.DQN):
             bonus = self.beta * self.xp.multiply(self.noise,self.xp.sqrt(uncertainty_estimates_values))
             action_value_adjusted = action_value.q_values.data + bonus
             self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
-            greedy_action = cuda.to_cpu(action_value_adjusted.argmax(axis = 1).astype(self.xp.int32))[0]
+            greedy_action = cuda.to_cpu(action_value_adjusted.argmax())
 
         # keep this if there is additional exploration
         action = self.explorer.select_action(
@@ -197,7 +197,7 @@ class UBE_DQN(dqn.DQN):
 
         # compute and store parameters for the uncertainty subnetwork
         self.compute_uncertainty_parms(action, features_vec)
-        self.action_history.append(copy.deepcopy(action))
+        self.action_history.append(action)
         self.hidden_layer_value_history.append(copy.deepcopy(hidden_layer_value))
 
 
