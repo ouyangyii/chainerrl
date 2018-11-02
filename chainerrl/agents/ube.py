@@ -106,10 +106,7 @@ class UBE_DQN(dqn.DQN):
             features_vec: phi(s), the last layer of the subnetwork
         """
         n_features = features_vec.shape[0]
-        Sigma_a = self.Sigma[a, :, :]
-        Sigma_a = Sigma_a.reshape(n_features, n_features)
-        # compute the uncertainty value y, which is the target for the uncertainty subnetwork
-
+        Sigma_a = self.Sigma[a, :, :].reshape(n_features, n_features)
         # compute the estimates of instantaneous uncertainty signal nu
         # these values will be used in the loss function of the uncertainty subnetwork
         nu_step1 = Sigma_a @ features_vec  # Sigma phi
@@ -117,8 +114,7 @@ class UBE_DQN(dqn.DQN):
         self.nu_history.append(nu_current)
         # update the variances from observations
         Sigma_dif = (nu_step1 @ nu_step1.T) / (1 + nu_current)
-        Sigma_a = Sigma_a - Sigma_dif
-        self.Sigma[a, :, :] = Sigma_a
+        self.Sigma[a, :, :] = Sigma_a - Sigma_dif
 
 
     def update_uncertainty_subnet(self, uncertainty_next=0.0):
