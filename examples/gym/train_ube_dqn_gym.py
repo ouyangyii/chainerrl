@@ -82,7 +82,7 @@ def main():
     parser.add_argument('--extra-exploration', action='store_true')
     parser.add_argument('--beta', type=float, default=1e-2)
     parser.add_argument('--n-step', type=int, default=1)
-
+    parser.add_argument('--lr-subnet', type=float, default=1e-3)
     args = parser.parse_args()
 
     # Set a random seed used in ChainerRL
@@ -191,7 +191,7 @@ def main():
 
 
     # the optimizer for the subnetwork
-    optimizer_subnet = optimizers.RMSprop(lr=1e-2, alpha = 0.99, eps=1e-3)
+    optimizer_subnet = optimizers.RMSprop(lr=1e-3, alpha = 0.99, eps=1e-3)
     optimizer_subnet.setup(uncertainty_subnet)
 
     # debug:
