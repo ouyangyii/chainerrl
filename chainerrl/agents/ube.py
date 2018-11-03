@@ -38,11 +38,11 @@ class SequenceCachedHiddenValue(links.Sequence):
         self.cached_values = [None]*len(self.layers_to_cache)
         super().__init__(*layers)
 
-    def to_gpu(self, device=None):
-        # move cached values to gpu
-        for value in self.cached_values:
-            value.to_gpu(device)
-        super().to_gpu(device)
+    # def to_gpu(self, device=None):
+    #     # move cached values to gpu
+    #     for value in self.cached_values:
+    #         value.to_gpu(device)
+    #     super().to_gpu(device)
 
     def __call__(self, x, **kwargs):
         h = x
