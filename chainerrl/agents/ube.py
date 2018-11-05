@@ -57,8 +57,9 @@ class SequenceCachedHiddenValue(links.Sequence):
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
             while lay_count < len(self.layers_to_cache) and index == self.layers_to_cache[lay_count]:
-                self.cached_values[lay_count] = copy.deepcopy(h)
-                lay_count += 1
+                with chainer.no_backprop_mode():
+                    self.cached_values[lay_count] = copy.deepcopy(h)
+                    lay_count += 1
 
         return h
 
@@ -171,7 +172,7 @@ class UBE_DQN(dqn.DQN):
             self.t, lambda: greedy_action, action_value=action_value)
 
 
-        # update date the uncertainty subnetwork every n_step steps
+        # update the uncertainty subnetwork every n_step steps
         if len(self.action_history) >= self.n_step:
             assert len(self.action_history) == len(self.nu_history)
             assert len(self.action_history) == len(self.hidden_layer_value_history)
