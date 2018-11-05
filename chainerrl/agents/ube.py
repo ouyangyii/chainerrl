@@ -164,7 +164,7 @@ class UBE_DQN(dqn.DQN):
             self.noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
             bonus = self.beta * self.xp.multiply(self.noise,self.xp.sqrt(uncertainty_estimates_values))
             action_value_adjusted = action_value.q_values.data + bonus
-            self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
+            # self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
             greedy_action = cuda.to_cpu(action_value_adjusted.argmax())
 
         # keep this if there is additional exploration
