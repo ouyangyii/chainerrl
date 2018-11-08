@@ -29,7 +29,7 @@ class SequenceCachedHiddenValue(links.Sequence):
     def __init__(self, *layers, **kwargs):
         """
         Args:
-            layer_indices: a list of layer indices whose values will be cached
+            layers_to_cache: a list of layer indices whose values will be cached
             layers: layers of the network
 
             """
