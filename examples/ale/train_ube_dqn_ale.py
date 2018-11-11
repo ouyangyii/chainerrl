@@ -89,10 +89,10 @@ def main():
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--final-exploration-frames',
                         type=int, default=10 ** 6)
-    parser.add_argument('--final-epsilon', type=float, default=0.01)
-    parser.add_argument('--eval-epsilon', type=float, default=0.001)
+    parser.add_argument('--final-epsilon', type=float, default=0.1)
+    parser.add_argument('--eval-epsilon', type=float, default=0.05)
     parser.add_argument('--noisy-net-sigma', type=float, default=None)
-    parser.add_argument('--arch', type=str, default='doubledqn',
+    parser.add_argument('--arch', type=str, default='nature',
                         choices=['nature', 'nips', 'dueling', 'doubledqn'])
     parser.add_argument('--steps', type=int, default=5 * 10 ** 7)
     parser.add_argument('--max-episode-len', type=int,
@@ -107,7 +107,7 @@ def main():
     parser.add_argument('--no-clip-delta',
                         dest='clip_delta', action='store_false')
     parser.set_defaults(clip_delta=True)
-    parser.add_argument('--agent', type=str, default='DoubleDQN',
+    parser.add_argument('--agent', type=str, default='DQN',
                         choices=['DQN', 'DoubleDQN', 'PAL'])
     parser.add_argument('--logging-level', type=int, default=20,
                         help='Logging level. 10:DEBUG, 20:INFO etc.')

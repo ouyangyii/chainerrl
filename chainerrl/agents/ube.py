@@ -46,6 +46,7 @@ class SequenceCachedHiddenValue(links.Sequence):
 
     def __call__(self, x, **kwargs):
         h = x
+        to_cache = kwargs.pop('to_cache',False)
         lay_count = 0
         for (index,layer), argnames, accept_var_args in zip(enumerate(self.layers),
                                                     self.argnames,
@@ -56,7 +57,7 @@ class SequenceCachedHiddenValue(links.Sequence):
                 layer_kwargs = {k: v for k, v in kwargs.items()
                                 if k in argnames}
             h = layer(h, **layer_kwargs)
-            while lay_count < len(self.layers_to_cache) and index == self.layers_to_cache[lay_count]:
+            while to_cache and lay_count < len(self.layers_to_cache) and index == self.layers_to_cache[lay_count]:
                 with chainer.no_backprop_mode():
                     self.cached_values[lay_count] = copy.deepcopy(h)
                     lay_count += 1
@@ -147,25 +148,24 @@ class UBE_DQN(dqn.DQN):
     def act_and_train(self, obs, reward):
         with chainer.using_config('train', False), chainer.no_backprop_mode():
             action_value = self.model(
-                self.batch_states([obs], self.xp, self.phi))
+                self.batch_states([obs], self.xp, self.phi), to_cache = True)
             q = float(action_value.max.data)
 
             # uncertainty_subnet takes input from the first hidden layer of the main Q-network
             hidden_layer_value = self.model.cached_values[0]
             uncertainty_estimates = self.uncertainty_subnet(hidden_layer_value)
 
-            # add noise to Q-value to perform Thompson sampling for exploration
-            # action_value_adjusted (array): the adjusted value
-            assert action_value.n_actions == uncertainty_estimates.n_actions
-            n_actions = action_value.n_actions
-            # the uncertainty estimates should be positive, so add a lower threshold min_var
-            min_var = self.xp.float32(0.001)
-            uncertainty_estimates_values = self.xp.maximum(uncertainty_estimates.q_values.data , min_var)
-            self.noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
-            bonus = self.beta * self.xp.multiply(self.noise,self.xp.sqrt(uncertainty_estimates_values))
-            action_value_adjusted = action_value.q_values.data + bonus
-            # self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
-            greedy_action = cuda.to_cpu(action_value_adjusted.argmax())
+        # add noise to Q-value to perform Thompson sampling for exploration
+        # action_value_adjusted (array): the adjusted value
+        n_actions = action_value.n_actions
+        # the uncertainty estimates should be positive, so add a lower threshold min_var
+        min_var = self.xp.float32(0.001)
+        uncertainty_estimates_values = self.xp.maximum(uncertainty_estimates.q_values.data , min_var)
+        self.noise = self.xp.random.normal(size=n_actions).astype(self.xp.float32)
+        bonus = self.beta * self.xp.multiply(self.noise,self.xp.sqrt(uncertainty_estimates_values))
+        action_value_adjusted = action_value.q_values.data + bonus
+        # self.logger.debug('action_value.q_values.data:%s, action_value_adjusted:%s', action_value.q_values.data, action_value_adjusted)
+        greedy_action = cuda.to_cpu(action_value_adjusted.argmax())
 
         # keep this if there is additional exploration
         action = self.explorer.select_action(
@@ -174,8 +174,6 @@ class UBE_DQN(dqn.DQN):
 
         # update the uncertainty subnetwork every n_step steps
         if len(self.action_history) >= self.n_step:
-            assert len(self.action_history) == len(self.nu_history)
-            assert len(self.action_history) == len(self.hidden_layer_value_history)
             uncertainty_next = float(uncertainty_estimates_values[:, action])
             self.update_uncertainty_subnet(uncertainty_next)
 
