@@ -47,35 +47,6 @@ class SingleSharedBias(chainer.Chain):
         return x + F.broadcast_to(self.bias, x.shape)
 
 
-def parse_arch(arch, n_actions):
-    if arch == 'nature':
-        return links.Sequence(
-            links.NatureDQNHead(),
-            L.Linear(512, n_actions),
-            DiscreteActionValue)
-    elif arch == 'doubledqn':
-        return links.Sequence(
-            links.NatureDQNHead(),
-            L.Linear(512, n_actions, nobias=True),
-            SingleSharedBias(),
-            DiscreteActionValue)
-    elif arch == 'nips':
-        return links.Sequence(
-            links.NIPSDQNHead(),
-            L.Linear(256, n_actions),
-            DiscreteActionValue)
-    elif arch == 'dueling':
-        return DuelingDQN(n_actions)
-    else:
-        raise RuntimeError('Not supported architecture: {}'.format(arch))
-
-
-def parse_agent(agent):
-    return {'DQN': agents.DQN,
-            'DoubleDQN': agents.DoubleDQN,
-            'PAL': agents.PAL}[agent]
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='BreakoutNoFrameskip-v4')
@@ -91,9 +62,6 @@ def main():
                         type=int, default=10 ** 6)
     parser.add_argument('--final-epsilon', type=float, default=0.1)
     parser.add_argument('--eval-epsilon', type=float, default=0.05)
-    parser.add_argument('--noisy-net-sigma', type=float, default=None)
-    parser.add_argument('--arch', type=str, default='nature',
-                        choices=['nature', 'nips', 'dueling', 'doubledqn'])
     parser.add_argument('--steps', type=int, default=5 * 10 ** 7)
     parser.add_argument('--max-episode-len', type=int,
                         default=30 * 60 * 60 // 4,  # 30 minutes with 60/4 fps
@@ -107,8 +75,6 @@ def main():
     parser.add_argument('--no-clip-delta',
                         dest='clip_delta', action='store_false')
     parser.set_defaults(clip_delta=True)
-    parser.add_argument('--agent', type=str, default='DQN',
-                        choices=['DQN', 'DoubleDQN', 'PAL'])
     parser.add_argument('--logging-level', type=int, default=20,
                         help='Logging level. 10:DEBUG, 20:INFO etc.')
     parser.add_argument('--render', action='store_true', default=False,
@@ -161,11 +127,40 @@ def main():
     eval_env = make_env(test=True)
 
     n_actions = env.action_space.n
-    q_func = parse_arch(args.arch, n_actions)
-
     # change the structure of q_func, the first layer's output will be feed to the subnet
     # the first layer's output is also the output of the last hidden layer
-    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(*q_func.layers, layers_to_cach=[0,0])
+    class NatureDQNHead_convpart(chainer.ChainList):
+        """DQN's head (Nature version)"""
+
+        def __init__(self, n_input_channels=4, n_output_channels=3136,
+                     activation=F.relu, bias=0.1):
+            self.n_input_channels = n_input_channels
+            self.activation = activation
+            self.n_output_channels = n_output_channels
+
+            layers = [
+                L.Convolution2D(n_input_channels, 32, 8, stride=4,
+                                initial_bias=bias),
+                L.Convolution2D(32, 64, 4, stride=2, initial_bias=bias),
+                L.Convolution2D(64, 64, 3, stride=1, initial_bias=bias),
+            ]
+            super().__init__(*layers)
+
+        def __call__(self, state):
+            h = state
+            for layer in self:
+                h = self.activation(layer(h))
+            return h
+
+
+    q_func = chainerrl.agents.ube.SequenceCachedHiddenValue(
+        NatureDQNHead_convpart(),
+        L.Linear(3136, 512, initial_bias=0.1),
+        F.relu,
+        L.Linear(512, n_actions),
+        DiscreteActionValue,
+        layers_to_cach=[0, 2])
+
 
     # No explorer for UBE unless extra exploration is used
     explorer = explorers.Greedy()
@@ -176,10 +171,6 @@ def main():
         args.final_exploration_frames,
         lambda: np.random.randint(n_actions))
 
-    if args.noisy_net_sigma is not None:
-        links.to_factorized_noisy(q_func)
-        # Turn off explorer
-        explorer = explorers.Greedy()
 
     # Draw the computational graph and save it in the output directory.
     chainerrl.misc.draw_computational_graph(
@@ -212,7 +203,7 @@ def main():
     # define the uncertainty subnetwork with one hidden layer
     # the bias is initialized with a large positive value
     uncertainty_subnet = links.Sequence(
-        L.Linear(512, 512),
+        L.Linear(3136, 512, initial_bias=0.1),
         F.relu,
         L.Linear(512, n_actions,initial_bias = 1.0*512),
         DiscreteActionValue)
