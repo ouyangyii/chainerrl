@@ -217,7 +217,8 @@ def main():
         L.Linear(512, n_actions,initial_bias = 1.0*512),
         DiscreteActionValue)
     # the optimizer for the subnetwork
-    optimizer_subnet = optimizers.RMSprop(lr=1e-3)
+    optimizer_subnet = optimizers.RMSpropGraves(
+        lr=1e-3, alpha=0.95, momentum=0.0, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
 
 
