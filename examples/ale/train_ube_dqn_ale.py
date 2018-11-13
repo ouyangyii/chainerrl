@@ -188,7 +188,7 @@ def main():
 
     # Use the same hyper parameters as the Nature paper's
     opt = optimizers.RMSpropGraves(
-        lr=args.lr, alpha=0.95, momentum=0.0, eps=1e-2)
+        lr=args.lr, alpha=0.95, momentum=0.95, eps=1e-2)
 
     opt.setup(q_func)
 
@@ -218,7 +218,7 @@ def main():
         DiscreteActionValue)
     # the optimizer for the subnetwork
     optimizer_subnet = optimizers.RMSpropGraves(
-        lr=1e-3, alpha=0.95, momentum=0.0, eps=1e-2)
+        lr=1e-3, alpha=0.95, momentum=0.95, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
 
 
