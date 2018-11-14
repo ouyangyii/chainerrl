@@ -210,6 +210,9 @@ def main():
     # the optimizer for the subnetwork
     optimizer_subnet = optimizers.RMSpropGraves(
         lr=1e-3, alpha=0.95, momentum=0.95, eps=1e-2)
+    # test different parameter
+    optimizer_subnet = optimizers.RMSpropGraves(
+        lr=1e-3, alpha=0.95, momentum=0.00, eps=1e-4)
     optimizer_subnet.setup(uncertainty_subnet)
 
 
