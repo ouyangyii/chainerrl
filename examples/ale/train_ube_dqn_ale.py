@@ -84,6 +84,12 @@ def main():
                              ' are saved as output files.')
     parser.add_argument('--lr', type=float, default=2.5e-4,
                         help='Learning rate')
+    parser.add_argument('--lr-subnet', type=float, default=0.001,
+                        help='Learning rate')
+    parser.add_argument('--momentum', type=float, default=0.00,
+                        help='Momentum')
+    parser.add_argument('--momentum-subnet', type=float, default=0.00,
+                        help='Momentum for subnet')
     parser.add_argument('--prioritized', action='store_true', default=False,
                         help='Use prioritized experience replay.')
 
@@ -179,7 +185,8 @@ def main():
 
     # Use the same hyper parameters as the Nature paper's
     opt = optimizers.RMSpropGraves(
-        lr=args.lr, alpha=0.95, momentum=0.95, eps=1e-2)
+        lr=args.lr, alpha=0.95, momentum=args.momentum, eps=1e-2)
+
 
     opt.setup(q_func)
 
@@ -209,10 +216,7 @@ def main():
         DiscreteActionValue)
     # the optimizer for the subnetwork
     optimizer_subnet = optimizers.RMSpropGraves(
-        lr=1e-3, alpha=0.95, momentum=0.95, eps=1e-2)
-    # test different parameter
-    optimizer_subnet = optimizers.RMSpropGraves(
-        lr=1e-3, alpha=0.95, momentum=0.00, eps=1e-4)
+        lr=args.lr_subnet, alpha=0.95, momentum=args.momentum_subnet, eps=1e-2)
     optimizer_subnet.setup(uncertainty_subnet)
 
 
