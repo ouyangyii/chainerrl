@@ -17,8 +17,9 @@ from chainer import cuda
 
 from chainerrl import links
 from chainerrl.agents import dqn
+from chainerrl import explorer
 
-# to begin from here
+
 from pdb import set_trace
 
 
@@ -63,6 +64,36 @@ class SequenceCachedHiddenValue(links.Sequence):
                     lay_count += 1
 
         return h
+
+
+
+# Thompson sampling based explorer
+class ThompsonSampling(explorer.Explorer):
+    """Thompson sampling for exploration.
+    Args:
+      epsilon: epsilon used
+      random_action_func: function with no argument that returns action
+      logger: logger used
+    """
+
+    def __init__(self, epsilon, random_action_func,
+                 logger=getLogger(__name__)):
+        assert epsilon >= 0 and epsilon <= 1
+        self.epsilon = epsilon
+        self.random_action_func = random_action_func
+        self.logger = logger
+
+    def select_action(self, t, greedy_action_func, action_value=None):
+        a, greedy = select_action_epsilon_greedily(
+            self.epsilon, self.random_action_func, greedy_action_func)
+        greedy_str = 'greedy' if greedy else 'non-greedy'
+        self.logger.debug('t:%s a:%s %s', t, a, greedy_str)
+        return a
+
+    def __repr__(self):
+        return 'ConstantEpsilonGreedy(epsilon={})'.format(self.epsilon)
+
+
 
 
 
@@ -113,6 +144,11 @@ class UBE_DQN(dqn.DQN):
         # these values will be used in the loss function of the uncertainty subnetwork
         nu_step1 = Sigma_a @ features_vec  # Sigma phi
         nu_current = float(features_vec.T @ nu_step1) # phi^T Sigma phi, a scalar
+
+        # add
+        max_local_uncertainty = 3.0
+        nu_current = self.xp.minimum(nu_current, max_local_uncertainty)
+
         self.nu_history.append(nu_current)
         # update the variances from observations
         Sigma_dif = (nu_step1 @ nu_step1.T) / (1 + nu_current)

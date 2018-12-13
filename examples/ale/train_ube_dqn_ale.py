@@ -216,7 +216,7 @@ def main():
         DiscreteActionValue)
     # the optimizer for the subnetwork
     optimizer_subnet = optimizers.RMSpropGraves(
-        lr=args.lr_subnet, alpha=0.95, momentum=args.momentum_subnet, eps=1e-2)
+        lr=args.lr_subnet, alpha=0.9, momentum=args.momentum_subnet, eps=1e-10)
     optimizer_subnet.setup(uncertainty_subnet)
 
 
@@ -246,9 +246,9 @@ def main():
             args.eval_n_runs, eval_stats['mean'], eval_stats['median'],
             eval_stats['stdev']))
     else:
-        # In testing DQN, randomly select 5% of actions
-        eval_explorer = explorers.ConstantEpsilonGreedy(
-            args.eval_epsilon, lambda: np.random.randint(n_actions))
+
+        # use a different beta in Thompson sampling for evaluation
+        eval_explorer = explorer
         experiments.train_agent_with_evaluation(
             agent=agent, env=env, steps=args.steps,
             eval_n_runs=args.eval_n_runs, eval_interval=args.eval_interval,
